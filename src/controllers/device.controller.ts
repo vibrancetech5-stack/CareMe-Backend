@@ -14,6 +14,9 @@ export async function registerDevice(req: Request, res: Response) {
 }
 
 export async function heartbeat(req: Request, res: Response) {
+  console.log('Heartbeat endpoint hit');
+  console.log(req.body);
+
   try {
     const data = await deviceService.heartbeat(req.body);
     return res.json({ ok: true, data });
@@ -25,6 +28,9 @@ export async function heartbeat(req: Request, res: Response) {
 }
 
 export async function updateVitals(req: Request, res: Response) {
+  console.log('Vitals endpoint hit');
+  console.log(req.body);
+
   try {
     const data = await deviceService.updateVitals(req.body);
     return res.json({ ok: true, data });

@@ -184,11 +184,11 @@ export class DeviceService {
       .single();
 
     if (error) {
-      console.error('Heartbeat error:', error);
-      throw new Error(error.message);
+      console.error('SUPABASE HEARTBEAT ERROR:', error);
+      throw error;
     }
 
-    console.log('Device updated:', data);
+    console.log('SUPABASE HEARTBEAT SUCCESS:', data);
     return data;
   }
 
