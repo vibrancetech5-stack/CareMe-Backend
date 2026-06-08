@@ -357,3 +357,8 @@ export class DeviceService {
     return data;
   }
 }
+
+
+
+
+//jgifrgi
