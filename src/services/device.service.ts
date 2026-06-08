@@ -225,6 +225,7 @@ export class DeviceService {
       .single();
 
     console.log('Device found:', device);
+    console.log('Device error:', deviceError);
 
     if (deviceError || !device) {
       throw new Error(`Device not found: ${deviceUid}`);
@@ -308,7 +309,7 @@ export class DeviceService {
       }
     }
 
-    const { error: deviceUpdateError } = await supabase
+    const { data: updateData, error: deviceUpdateError } = await supabase
       .from('devices')
       .update({
         last_seen: now,
@@ -318,7 +319,11 @@ export class DeviceService {
         device_status: 'online',
         updated_at: now,
       })
-      .eq('device_uid', deviceUid);
+      .eq('device_uid', deviceUid)
+      .select();
+
+    console.log('Update Data:', updateData);
+    console.log('Update Error:', deviceUpdateError);
 
     if (deviceUpdateError) {
       throw new Error(deviceUpdateError.message);
