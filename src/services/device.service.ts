@@ -122,7 +122,27 @@ export class DeviceService {
 
   async heartbeat(payload: HeartbeatPayload) {
     const deviceUid = payload.device_uid ?? payload.deviceId;
+
+    console.log('========================');
+    console.log('Heartbeat Payload:', payload);
+    console.log('Device UID:', deviceUid);
+    console.log('========================');
+
     if (!deviceUid) throw new Error('Missing device_uid');
+
+    console.log('Device UID (raw):', JSON.stringify(deviceUid));
+    try {
+      console.log(
+        'Device UID char codes:',
+        deviceUid.split('').map((c) => c.charCodeAt(0)),
+      );
+    } catch (e) {
+      /* ignore */
+    }
+    console.log('Device UID (trimmed):', deviceUid.trim());
+    if (/\r/.test(deviceUid)) {
+      console.warn('Device UID contains CR (\\r)');
+    }
 
     const now = new Date().toISOString();
     const assignedPatientId =
@@ -163,15 +183,39 @@ export class DeviceService {
       .select()
       .single();
 
-    if (error) throw new Error(error.message);
+    if (error) {
+      console.error('Heartbeat error:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('Device updated:', data);
     return data;
   }
 
   async updateVitals(payload: VitalsPayload) {
     const deviceUid = payload.device_uid ?? payload.deviceId;
 
+    console.log('========================');
+    console.log('Vitals Payload:', payload);
+    console.log('Device UID:', deviceUid);
+    console.log('========================');
+
     if (!deviceUid) {
       throw new Error('Missing device_uid');
+    }
+
+    console.log('Device UID (raw):', JSON.stringify(deviceUid));
+    try {
+      console.log(
+        'Device UID char codes:',
+        deviceUid.split('').map((c) => c.charCodeAt(0)),
+      );
+    } catch (e) {
+      /* ignore */
+    }
+    console.log('Device UID (trimmed):', deviceUid.trim());
+    if (/\r/.test(deviceUid)) {
+      console.warn('Device UID contains CR (\\r)');
     }
 
     const { data: device, error: deviceError } = await supabase
@@ -179,6 +223,8 @@ export class DeviceService {
       .select('*')
       .eq('device_uid', deviceUid)
       .single();
+
+    console.log('Device found:', device);
 
     if (deviceError || !device) {
       throw new Error(`Device not found: ${deviceUid}`);
@@ -225,6 +271,7 @@ export class DeviceService {
         console.error('[updateVitals] vitals_history insert failed:', error);
       } else {
         vitalsRow = data;
+        console.log('Vitals inserted');
       }
 
       const { error: realtimeError } = await supabase
@@ -255,6 +302,9 @@ export class DeviceService {
           '[updateVitals] realtime_patient_monitor update failed:',
           realtimeError,
         );
+      }
+      else {
+        console.log('Realtime monitor updated');
       }
     }
 
