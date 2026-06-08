@@ -193,6 +193,8 @@ export class DeviceService {
 
     console.log('HEARTBEAT RESULT:', data);
     console.log('HEARTBEAT ERROR:', error);
+    console.log('Device UID:', deviceUid);
+
 
     if (error) {
       console.error('SUPABASE HEARTBEAT ERROR:', error);
