@@ -149,9 +149,9 @@ export class DeviceService {
       payload.assigned_patient_id ?? payload.patient_id ?? payload.patientId;
 
     const upsertData: Record<string, unknown> = {
-      device_uid: deviceUid,
-      hardware_id: payload.hardware_id ?? deviceUid,
-      device_name: payload.device_name ?? `CareMe-${deviceUid.slice(-4)}`,
+      device_uid: deviceUid.trim(),
+      hardware_id: payload.hardware_id ?? deviceUid.trim(),
+      device_name: payload.device_name ?? `CareMe-${deviceUid.trim().slice(-4)}`,
       device_type: payload.device_type ?? 'ESP32',
       wifi_ssid: payload.wifi_ssid,
       ip_address: payload.ip_address,
@@ -181,7 +181,13 @@ export class DeviceService {
 
     const { data, error } = await supabase
       .from('devices')
-      .upsert(upsertData, { onConflict: 'device_uid' })
+      .upsert(
+        {
+          ...upsertData,
+          device_uid: deviceUid.trim(),
+        },
+        { onConflict: 'device_uid' },
+      )
       .select()
       .single();
 
