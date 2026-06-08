@@ -177,18 +177,22 @@ export class DeviceService {
       upsertData['signal_strength'] = signal;
     }
 
+    console.log('HEARTBEAT UPSERT DATA:', upsertData);
+
     const { data, error } = await supabase
       .from('devices')
       .upsert(upsertData, { onConflict: 'device_uid' })
       .select()
       .single();
 
+    console.log('HEARTBEAT RESULT:', data);
+    console.log('HEARTBEAT ERROR:', error);
+
     if (error) {
       console.error('SUPABASE HEARTBEAT ERROR:', error);
       throw error;
     }
 
-    console.log('SUPABASE HEARTBEAT SUCCESS:', data);
     return data;
   }
 
@@ -221,11 +225,11 @@ export class DeviceService {
     const { data: device, error: deviceError } = await supabase
       .from('devices')
       .select('*')
-      .eq('device_uid', deviceUid)
-      .single();
+      .eq('device_uid', deviceUid.trim())
+      .maybeSingle();
 
-    console.log('Device found:', device);
-    console.log('Device error:', deviceError);
+    console.log('DEVICE LOOKUP RESULT:', device);
+    console.log('DEVICE LOOKUP ERROR:', deviceError);
 
     if (deviceError || !device) {
       throw new Error(`Device not found: ${deviceUid}`);
@@ -319,11 +323,11 @@ export class DeviceService {
         device_status: 'online',
         updated_at: now,
       })
-      .eq('device_uid', deviceUid)
+      .eq('device_uid', deviceUid.trim())
       .select();
 
-    console.log('Update Data:', updateData);
-    console.log('Update Error:', deviceUpdateError);
+    console.log('UPDATE DATA:', updateData);
+    console.log('UPDATE ERROR:', deviceUpdateError);
 
     if (deviceUpdateError) {
       throw new Error(deviceUpdateError.message);

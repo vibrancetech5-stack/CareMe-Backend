@@ -13,6 +13,14 @@ app.use((req, _res, next) => {
   next();
 });
 
+app.get('/', (_req, res) => {
+  res.json({
+    status: 'online',
+    service: 'CareMe Backend',
+    time: new Date().toISOString(),
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'careme-device-backend' });
 });
