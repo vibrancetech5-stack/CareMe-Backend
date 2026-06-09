@@ -35,6 +35,8 @@ app.get('/health', (_req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+// Expose organization signup at root path: /organizations/signup
+app.use('/', authRoutes);
 app.use('/api/patients', patientRoutes);
 app.use('/api/devices', deviceRoutes);
 app.use('/api', deviceRoutes);
