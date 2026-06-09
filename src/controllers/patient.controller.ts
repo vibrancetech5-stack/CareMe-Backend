@@ -15,13 +15,10 @@ export class PatientController {
       const user = req.user as AuthUser;
       const organizationId = user.organization_id;
 
-      // Merge organization_id from token with request payload
-      const payload = {
-        ...req.body,
-        organization_id: organizationId,
-      };
+      // Build payload from request but do NOT trust incoming organization_id
+      const { organization_id: _discardOrg, ...bodyWithoutOrg } = req.body as any;
 
-      const result = await patientService.createPatient(payload);
+      const result = await patientService.createPatient(bodyWithoutOrg, organizationId);
       res.status(201).json(result);
     } catch (error) {
       res.status(500).json({

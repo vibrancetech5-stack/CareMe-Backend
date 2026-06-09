@@ -1,11 +1,14 @@
 import { supabase } from '../config/supabase.js';
 
 export class PatientService {
-  async createPatient(payload: any) {
+  async createPatient(payload: any, organizationId: string) {
     const { data, error } =
       await supabase
         .from('patients')
-        .insert(payload)
+        .insert({
+          ...payload,
+          organization_id: organizationId,
+        })
         .select()
         .single();
 
