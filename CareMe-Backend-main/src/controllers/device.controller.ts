@@ -1,22 +1,10 @@
 import { Request, Response } from 'express';
 import { DeviceService } from '../services/device.service.js';
-import { AuthUser } from '../middleware/auth.js';
-
 const deviceService = new DeviceService();
 
 export async function registerDevice(req: Request, res: Response) {
   try {
-    // If authenticated, enforce organization_id from token
-    let payload = req.body;
-    if (req.user) {
-      const user = req.user as AuthUser;
-      payload = {
-        ...req.body,
-        organization_id: user.organization_id,
-      };
-    }
-    
-    const data = await deviceService.registerDevice(payload);
+    const data = await deviceService.registerDevice(req.body);
     return res.json({ ok: true, data });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

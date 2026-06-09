@@ -3,7 +3,6 @@ import { supabase } from '../config/supabase.js';
 type RegisterPayload = {
   deviceId?: string;
   device_uid?: string;
-  organization_id?: string;
   hardware_id?: string;
   device_name?: string;
   device_type?: string;
@@ -83,9 +82,6 @@ export class DeviceService {
     const deviceUid = payload.device_uid ?? payload.deviceId;
     if (!deviceUid) throw new Error('Missing device_uid');
 
-    const organizationId = payload.organization_id;
-    if (!organizationId) throw new Error('Missing organization_id');
-
     const now = new Date().toISOString();
     const assignedPatientId =
       payload.assigned_patient_id ?? payload.patient_id ?? payload.patientId;
@@ -95,7 +91,6 @@ export class DeviceService {
       .upsert(
         {
           device_uid: deviceUid,
-          organization_id: organizationId,
           hardware_id: payload.hardware_id ?? deviceUid,
           device_name: payload.device_name ?? payload.name ?? 'ESP32 Sensor',
           device_type: payload.device_type ?? 'ESP32_C1001',

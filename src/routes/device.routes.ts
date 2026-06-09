@@ -5,10 +5,16 @@ import {
   updateVitals,
   createAlert,
 } from '../controllers/device.controller.js';
+import { optionalAuthMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
+<<<<<<< HEAD
 router.post('/register', registerDevice);
+=======
+// Device registration endpoint (optional auth)
+router.post('/register', optionalAuthMiddleware, registerDevice);
+>>>>>>> 5ad26b6 (Fix ESP32 heartbeat and vitals routes)
 
 // Existing routes
 router.post('/heartbeat', heartbeat);
