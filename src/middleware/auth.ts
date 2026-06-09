@@ -1,62 +1,56 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { supabase } from '../config/supabase.js';
 
-export interface AuthUser {
-  id: string;
-  organization_id: string;
-  role: string;
-  email?: string;
-}
-
+// Extend Express Request to include user
 declare global {
   namespace Express {
     interface Request {
-      user?: AuthUser;
+      user?: {
+        id: string;
+        organization_id: string;
+        role: string;
+        full_name: string;
+      };
     }
   }
 }
 
-export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Missing or invalid authorization header' });
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing or invalid Authorization header' });
     }
 
-    const token = authHeader.substring(7);
-    const secret = process.env.JWT_SECRET ?? 'your-secret-key';
+    const token = authHeader.split(' ')[1];
     
-    const decoded = jwt.verify(token, secret) as AuthUser;
-    
-    if (!decoded.id || !decoded.organization_id || !decoded.role) {
-      return res.status(401).json({ error: 'Invalid token: missing required fields' });
+    // Verify token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' });
     }
 
-    req.user = decoded;
-    next();
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Token verification failed';
-    res.status(401).json({ error: errorMessage });
-  }
-};
+    // Get user profile
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('organization_id, role, full_name')
+      .eq('id', user.id)
+      .single();
 
-export const optionalAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const secret = process.env.JWT_SECRET ?? 'your-secret-key';
-      
-      const decoded = jwt.verify(token, secret) as AuthUser;
-      
-      if (decoded.id && decoded.organization_id && decoded.role) {
-        req.user = decoded;
-      }
+    if (profileError || !profile) {
+      return res.status(403).json({ error: 'User profile not found' });
     }
+
+    req.user = {
+      id: user.id,
+      organization_id: profile.organization_id,
+      role: profile.role,
+      full_name: profile.full_name
+    };
+
     next();
-  } catch (error) {
-    next();
+  } catch (err) {
+    console.error('[AuthMiddleware] Error:', err);
+    res.status(500).json({ error: 'Internal server error during authentication' });
   }
 };
