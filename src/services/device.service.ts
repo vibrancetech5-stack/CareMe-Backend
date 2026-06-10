@@ -495,10 +495,6 @@ export class DeviceService {
     console.log('[unassignDevice] unassignment complete - device', deviceId, 'unassigned from patient', patientId);
     return { success: true };
   }
-    }
-
-    return { success: true };
-  }
 
   async createAlert(payload: AlertPayload) {
     const { data, error } = await supabase
