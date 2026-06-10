@@ -67,6 +67,9 @@ export async function assignDevice(req: Request, res: Response) {
 
 export async function unassignDevice(req: Request, res: Response) {
   try {
+    console.log('========== UNASSIGN API ==========', req.path);
+    console.log('Unassign request body:', req.body);
+
     if (!req.user) {
       return res.status(401).json({ ok: false, error: 'Unauthorized' });
     }

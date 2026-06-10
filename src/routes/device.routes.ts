@@ -17,8 +17,11 @@ router.post('/register', optionalAuthMiddleware, registerDevice);
 
 // New device management endpoints
 router.get('/devices/available', requireAuth, getAvailableDevices);
+router.get('/device/available', requireAuth, getAvailableDevices);
 router.post('/devices/assign', requireAuth, assignDevice);
+router.post('/device/assign', requireAuth, assignDevice);
 router.post('/devices/unassign', requireAuth, unassignDevice);
+router.post('/device/unassign', requireAuth, unassignDevice);
 
 // Existing routes
 router.post('/heartbeat', heartbeat);
