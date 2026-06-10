@@ -103,6 +103,8 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
     const organizationId = req.user!.organization_id;
     const patientId = req.params.id;
 
+    console.log('UNASSIGN REQUEST:', req.body);
+
     // UPDATE ADDED HERE: We now select assigned_device_id so we know which device to clear
     const { data: patient, error: patientErr } = await supabase
       .from('patients')
@@ -110,6 +112,8 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
       .eq('id', patientId)
       .eq('organization_id', organizationId)
       .maybeSingle();
+
+    console.log('PATIENT:', patient);
 
     if (patientErr || !patient) {
       return res.status(403).json({ error: 'Patient not found in your organization' });
@@ -121,15 +125,27 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
       .update({ assigned_device_id: null })
       .eq('id', patientId);
 
+    console.log('PATIENT UPDATE ERROR:', updateErr);
     if (updateErr) return res.status(400).json({ error: updateErr.message });
 
     // UPDATE ADDED HERE: Clear the patient from the device table
     if (patient.assigned_device_id) {
-      await supabase
+      const { error: deviceUpdateErr } = await supabase
         .from('devices')
         .update({ assigned_patient_id: null })
         .eq('id', patient.assigned_device_id);
+
+      console.log('DEVICE UPDATE ERROR:', deviceUpdateErr);
     }
+
+    // NEW: Clear the device from the realtime_patient_monitor table
+    const { error: realtimeErr } = await supabase
+      .from('realtime_patient_monitor')
+      .update({ device_id: null })
+      .eq('patient_id', patientId);
+
+    console.log('REALTIME MONITOR UPDATE ERROR:', realtimeErr);
+    if (realtimeErr) return res.status(400).json({ error: realtimeErr.message });
 
     res.json({ success: true, message: 'Device unassigned successfully' });
   } catch (err: any) {
