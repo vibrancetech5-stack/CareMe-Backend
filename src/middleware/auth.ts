@@ -1,19 +1,58 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../config/supabase.js';
 
+export interface AuthUser {
+  id: string;
+  organization_id: string;
+  role: string;
+  full_name: string;
+}
+
 // Extend Express Request to include user
 declare global {
   namespace Express {
     interface Request {
-      user?: {
-        id: string;
-        organization_id: string;
-        role: string;
-        full_name: string;
-      };
+      user?: AuthUser;
     }
   }
 }
+
+export const optionalAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return next();
+    }
+
+    const token = authHeader.split(' ')[1];
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      return next();
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('organization_id, role, full_name')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return next();
+    }
+
+    req.user = {
+      id: user.id,
+      organization_id: profile.organization_id,
+      role: profile.role,
+      full_name: profile.full_name,
+    };
+
+    next();
+  } catch (err) {
+    console.error('[optionalAuthMiddleware] Error:', err);
+    next();
+  }
+};
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
   try {

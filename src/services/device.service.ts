@@ -166,6 +166,9 @@ export class DeviceService {
       last_seen: now,
       last_heartbeat: now,
       device_status: payload.device_status ?? 'online',
+      sensor_status: 'online',
+      offline_reason: null,
+      offline_detected_at: null,
       provisioning_status: 'completed',
       updated_at: now,
     };
@@ -197,7 +200,9 @@ export class DeviceService {
       .single();
 
     console.log('HEARTBEAT RESULT:', data);
-    console.log('HEARTBEAT ERROR:', error);
+    if (error) {
+      console.error('HEARTBEAT ERROR:', error);
+    }
     console.log('Device UID:', deviceUid);
 
 
@@ -242,7 +247,9 @@ export class DeviceService {
       .maybeSingle();
 
     console.log('DEVICE LOOKUP RESULT:', device);
-    console.log('DEVICE LOOKUP ERROR:', deviceError);
+    if (deviceError) {
+      console.error('DEVICE LOOKUP ERROR:', deviceError);
+    }
 
     if (deviceError || !device) {
       throw new Error(`Device not found: ${deviceUid}`);
@@ -334,13 +341,18 @@ export class DeviceService {
         signal_strength: payload.signal_strength,
         battery_level: payload.battery_level,
         device_status: 'online',
+        sensor_status: payload.sensor_status ?? 'online',
+        offline_reason: null,
+        offline_detected_at: null,
         updated_at: now,
       })
       .eq('device_uid', deviceUid.trim())
       .select();
 
     console.log('UPDATE DATA:', updateData);
-    console.log('UPDATE ERROR:', deviceUpdateError);
+    if (deviceUpdateError) {
+      console.error('UPDATE ERROR:', deviceUpdateError);
+    }
 
     if (deviceUpdateError) {
       throw new Error(deviceUpdateError.message);
