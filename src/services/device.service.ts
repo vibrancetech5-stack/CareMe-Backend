@@ -369,6 +369,7 @@ export class DeviceService {
   }
 
   async getAvailableDevices(organizationId: string) {
+    console.log('[getAvailableDevices] organizationId:', organizationId);
     const { data, error } = await supabase
       .from('devices')
       .select('*')
@@ -376,13 +377,17 @@ export class DeviceService {
       .eq('organization_id', organizationId);
 
     if (error) {
+      console.error('[getAvailableDevices] supabase error:', error.message);
       throw new Error(error.message);
     }
 
+    console.log('[getAvailableDevices] found devices count:', Array.isArray(data) ? data.length : 0);
     return data;
   }
 
   async assignDevice(patientId: string, deviceId: string, organizationId: string) {
+    console.log('[assignDevice] patientId:', patientId, 'deviceId:', deviceId, 'organizationId:', organizationId);
+    
     const { data: patient, error: patientError } = await supabase
       .from('patients')
       .select('id')
@@ -405,6 +410,7 @@ export class DeviceService {
       throw new Error('Device not found in your organization');
     }
 
+    console.log('[assignDevice] updating patients table with assigned_device_id:', deviceId);
     const { error: patientUpdateError } = await supabase
       .from('patients')
       .update({ assigned_device_id: deviceId })
@@ -414,6 +420,7 @@ export class DeviceService {
       throw new Error(patientUpdateError.message);
     }
 
+    console.log('[assignDevice] updating devices table with assigned_patient_id:', patientId);
     const { error: deviceUpdateError } = await supabase
       .from('devices')
       .update({ assigned_patient_id: patientId })
@@ -423,6 +430,7 @@ export class DeviceService {
       throw new Error(deviceUpdateError.message);
     }
 
+    console.log('[assignDevice] updating realtime_patient_monitor with device_id:', deviceId);
     const { error: monitorError } = await supabase
       .from('realtime_patient_monitor')
       .update({ device_id: deviceId })
@@ -432,10 +440,13 @@ export class DeviceService {
       throw new Error(monitorError.message);
     }
 
+    console.log('[assignDevice] assignment complete - device', deviceId, 'assigned to patient', patientId);
     return { success: true };
   }
 
   async unassignDevice(patientId: string, organizationId: string) {
+    console.log('[unassignDevice] patientId:', patientId, 'organizationId:', organizationId);
+    
     const { data: patient, error: patientError } = await supabase
       .from('patients')
       .select('id, assigned_device_id')
@@ -448,6 +459,8 @@ export class DeviceService {
     }
 
     const deviceId = patient.assigned_device_id;
+    console.log('[unassignDevice] clearing assigned_device_id for patient:', patientId, 'deviceId was:', deviceId);
+    
     const { error: patientUpdateError } = await supabase
       .from('patients')
       .update({ assigned_device_id: null })
@@ -458,6 +471,7 @@ export class DeviceService {
     }
 
     if (deviceId) {
+      console.log('[unassignDevice] clearing assigned_patient_id for device:', deviceId);
       const { error: deviceUpdateError } = await supabase
         .from('devices')
         .update({ assigned_patient_id: null })
@@ -468,6 +482,7 @@ export class DeviceService {
       }
     }
 
+    console.log('[unassignDevice] clearing device_id for realtime_patient_monitor patient:', patientId);
     const { error: monitorError } = await supabase
       .from('realtime_patient_monitor')
       .update({ device_id: null })
@@ -475,6 +490,11 @@ export class DeviceService {
 
     if (monitorError) {
       throw new Error(monitorError.message);
+    }
+
+    console.log('[unassignDevice] unassignment complete - device', deviceId, 'unassigned from patient', patientId);
+    return { success: true };
+  }
     }
 
     return { success: true };
