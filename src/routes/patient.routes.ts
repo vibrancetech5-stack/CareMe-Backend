@@ -80,6 +80,16 @@ router.post('/:id/assign-device', requireAuth, async (req, res) => {
 
     if (updateErr) return res.status(400).json({ error: updateErr.message });
 
+    // 5. UPDATE ADDED HERE: Update the device with the patient ID
+    const { error: deviceUpdateErr } = await supabase
+      .from('devices')
+      .update({ assigned_patient_id: patientId })
+      .eq('id', device_id);
+
+    if (deviceUpdateErr) {
+      console.error('[Assign Device] Failed to update device with patient ID:', deviceUpdateErr);
+    }
+
     res.json({ success: true, message: 'Device assigned successfully' });
   } catch (err: any) {
     console.error('[Assign Device] Error:', err);
@@ -93,10 +103,10 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
     const organizationId = req.user!.organization_id;
     const patientId = req.params.id;
 
-    // Verify patient belongs to caller's org
+    // UPDATE ADDED HERE: We now select assigned_device_id so we know which device to clear
     const { data: patient, error: patientErr } = await supabase
       .from('patients')
-      .select('id')
+      .select('id, assigned_device_id')
       .eq('id', patientId)
       .eq('organization_id', organizationId)
       .maybeSingle();
@@ -105,13 +115,21 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
       return res.status(403).json({ error: 'Patient not found in your organization' });
     }
 
-    // Unassign device
+    // Unassign device from the patient table
     const { error: updateErr } = await supabase
       .from('patients')
       .update({ assigned_device_id: null })
       .eq('id', patientId);
 
     if (updateErr) return res.status(400).json({ error: updateErr.message });
+
+    // UPDATE ADDED HERE: Clear the patient from the device table
+    if (patient.assigned_device_id) {
+      await supabase
+        .from('devices')
+        .update({ assigned_patient_id: null })
+        .eq('id', patient.assigned_device_id);
+    }
 
     res.json({ success: true, message: 'Device unassigned successfully' });
   } catch (err: any) {

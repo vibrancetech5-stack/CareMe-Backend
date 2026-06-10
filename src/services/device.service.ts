@@ -368,6 +368,118 @@ export class DeviceService {
     );
   }
 
+  async getAvailableDevices(organizationId: string) {
+    const { data, error } = await supabase
+      .from('devices')
+      .select('*')
+      .is('assigned_patient_id', null)
+      .eq('organization_id', organizationId);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return data;
+  }
+
+  async assignDevice(patientId: string, deviceId: string, organizationId: string) {
+    const { data: patient, error: patientError } = await supabase
+      .from('patients')
+      .select('id')
+      .eq('id', patientId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (patientError || !patient) {
+      throw new Error('Patient not found in your organization');
+    }
+
+    const { data: device, error: deviceError } = await supabase
+      .from('devices')
+      .select('id')
+      .eq('id', deviceId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (deviceError || !device) {
+      throw new Error('Device not found in your organization');
+    }
+
+    const { error: patientUpdateError } = await supabase
+      .from('patients')
+      .update({ assigned_device_id: deviceId })
+      .eq('id', patientId);
+
+    if (patientUpdateError) {
+      throw new Error(patientUpdateError.message);
+    }
+
+    const { error: deviceUpdateError } = await supabase
+      .from('devices')
+      .update({ assigned_patient_id: patientId })
+      .eq('id', deviceId);
+
+    if (deviceUpdateError) {
+      throw new Error(deviceUpdateError.message);
+    }
+
+    const { error: monitorError } = await supabase
+      .from('realtime_patient_monitor')
+      .update({ device_id: deviceId })
+      .eq('patient_id', patientId);
+
+    if (monitorError) {
+      throw new Error(monitorError.message);
+    }
+
+    return { success: true };
+  }
+
+  async unassignDevice(patientId: string, organizationId: string) {
+    const { data: patient, error: patientError } = await supabase
+      .from('patients')
+      .select('id, assigned_device_id')
+      .eq('id', patientId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (patientError || !patient) {
+      throw new Error('Patient not found in your organization');
+    }
+
+    const deviceId = patient.assigned_device_id;
+    const { error: patientUpdateError } = await supabase
+      .from('patients')
+      .update({ assigned_device_id: null })
+      .eq('id', patientId);
+
+    if (patientUpdateError) {
+      throw new Error(patientUpdateError.message);
+    }
+
+    if (deviceId) {
+      const { error: deviceUpdateError } = await supabase
+        .from('devices')
+        .update({ assigned_patient_id: null })
+        .eq('id', deviceId);
+
+      if (deviceUpdateError) {
+        throw new Error(deviceUpdateError.message);
+      }
+    }
+
+    const { error: monitorError } = await supabase
+      .from('realtime_patient_monitor')
+      .update({ device_id: null })
+      .eq('patient_id', patientId);
+
+    if (monitorError) {
+      throw new Error(monitorError.message);
+    }
+
+    return { success: true };
+  }
+
   async createAlert(payload: AlertPayload) {
     const { data, error } = await supabase
       .from('alerts')

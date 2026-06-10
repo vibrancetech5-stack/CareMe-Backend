@@ -1,16 +1,24 @@
 import { Router } from 'express';
 import {
   registerDevice,
+  getAvailableDevices,
+  assignDevice,
+  unassignDevice,
   heartbeat,
   updateVitals,
   createAlert,
 } from '../controllers/device.controller.js';
-import { optionalAuthMiddleware } from '../middleware/auth.js';
+import { optionalAuthMiddleware, requireAuth } from '../middleware/auth.js';
 
 const router = Router();
 
 // Device registration endpoint (optional auth)
 router.post('/register', optionalAuthMiddleware, registerDevice);
+
+// New device management endpoints
+router.get('/devices/available', requireAuth, getAvailableDevices);
+router.post('/devices/assign', requireAuth, assignDevice);
+router.post('/devices/unassign', requireAuth, unassignDevice);
 
 // Existing routes
 router.post('/heartbeat', heartbeat);
