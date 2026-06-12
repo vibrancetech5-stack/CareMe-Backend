@@ -200,5 +200,48 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+// POST /api/patients/discharge
+router.post('/discharge', requireAuth, async (req, res) => {
+  try {
+    const organizationId = req.user!.organization_id;
+    const { patientId, summary } = req.body;
 
+    if (!patientId) {
+      return res.status(400).json({ error: 'patientId is required' });
+    }
+
+    const { data, error } = await supabase
+      .from('patients')
+      .update({
+        status: 'discharged',
+        discharge_date: new Date().toISOString(),
+        discharge_summary: summary || '',
+      })
+      .eq('id', patientId)
+      .eq('organization_id', organizationId)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    if (data?.assigned_device_id) {
+      await supabase
+        .from('devices')
+        .update({ assigned_patient_id: null })
+        .eq('id', data.assigned_device_id);
+
+      await supabase
+        .from('realtime_patient_monitor')
+        .update({ device_id: null })
+        .eq('patient_id', patientId);
+    }
+
+    res.json({ success: true, patient: data });
+  } catch (err: any) {
+    console.error('[Discharge Patient] Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
 export default router;
