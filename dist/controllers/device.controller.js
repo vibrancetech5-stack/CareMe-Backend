@@ -20,6 +20,58 @@ export async function registerDevice(req, res) {
         return res.status(400).json({ ok: false, error: message });
     }
 }
+export async function getAvailableDevices(req, res) {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        const devices = await deviceService.getAvailableDevices(req.user.organization_id);
+        return res.json({ ok: true, data: devices });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[getAvailableDevices] failed:', message);
+        return res.status(400).json({ ok: false, error: message });
+    }
+}
+export async function assignDevice(req, res) {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        const { patientId, deviceId } = req.body;
+        if (!patientId || !deviceId) {
+            return res.status(400).json({ ok: false, error: 'patientId and deviceId are required' });
+        }
+        const result = await deviceService.assignDevice(patientId, deviceId, req.user.organization_id);
+        return res.json({ ok: true, data: result });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[assignDevice] failed:', message, req.body);
+        return res.status(400).json({ ok: false, error: message });
+    }
+}
+export async function unassignDevice(req, res) {
+    try {
+        console.log('========== UNASSIGN API ==========', req.path);
+        console.log('Unassign request body:', req.body);
+        if (!req.user) {
+            return res.status(401).json({ ok: false, error: 'Unauthorized' });
+        }
+        const { patientId } = req.body;
+        if (!patientId) {
+            return res.status(400).json({ ok: false, error: 'patientId is required' });
+        }
+        const result = await deviceService.unassignDevice(patientId, req.user.organization_id);
+        return res.json({ ok: true, data: result });
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('[unassignDevice] failed:', message, req.body);
+        return res.status(400).json({ ok: false, error: message });
+    }
+}
 export async function heartbeat(req, res) {
     console.log('Heartbeat endpoint hit');
     console.log(req.body);

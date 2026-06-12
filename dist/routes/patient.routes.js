@@ -22,6 +22,46 @@ router.post('/', requireAuth, async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+// POST /api/patients/discharge
+router.post('/discharge', requireAuth, async (req, res) => {
+    try {
+        const organizationId = req.user.organization_id;
+        const dischargedBy = req.user.id;
+        const { patientId, summary } = req.body;
+        if (!patientId) {
+            return res.status(400).json({ error: 'patientId is required' });
+        }
+        if (!summary) {
+            return res.status(400).json({ error: 'summary is required' });
+        }
+        const { data: patient, error: patientErr } = await supabase
+            .from('patients')
+            .select('id')
+            .eq('id', patientId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+        if (patientErr || !patient) {
+            return res.status(403).json({ error: 'Patient not found in your organization' });
+        }
+        const { error } = await supabase
+            .from('patients')
+            .update({
+            status: 'Discharged',
+            discharge_date: new Date().toISOString(),
+            discharge_summary: summary,
+            discharged_by: dischargedBy,
+        })
+            .eq('id', patientId);
+        if (error) {
+            return res.status(400).json({ error: error.message });
+        }
+        res.json({ success: true, message: 'Patient discharged successfully' });
+    }
+    catch (err) {
+        console.error('[Discharge Patient] Error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
 // POST /api/patients/:id/assign-device
 router.post('/:id/assign-device', requireAuth, async (req, res) => {
     try {
@@ -68,6 +108,14 @@ router.post('/:id/assign-device', requireAuth, async (req, res) => {
             .eq('id', patientId);
         if (updateErr)
             return res.status(400).json({ error: updateErr.message });
+        // 5. UPDATE ADDED HERE: Update the device with the patient ID
+        const { error: deviceUpdateErr } = await supabase
+            .from('devices')
+            .update({ assigned_patient_id: patientId })
+            .eq('id', device_id);
+        if (deviceUpdateErr) {
+            console.error('[Assign Device] Failed to update device with patient ID:', deviceUpdateErr);
+        }
         res.json({ success: true, message: 'Device assigned successfully' });
     }
     catch (err) {
@@ -80,23 +128,42 @@ router.post('/:id/unassign-device', requireAuth, async (req, res) => {
     try {
         const organizationId = req.user.organization_id;
         const patientId = req.params.id;
-        // Verify patient belongs to caller's org
+        console.log('UNASSIGN REQUEST:', req.body);
+        // UPDATE ADDED HERE: We now select assigned_device_id so we know which device to clear
         const { data: patient, error: patientErr } = await supabase
             .from('patients')
-            .select('id')
+            .select('id, assigned_device_id')
             .eq('id', patientId)
             .eq('organization_id', organizationId)
             .maybeSingle();
+        console.log('PATIENT:', patient);
         if (patientErr || !patient) {
             return res.status(403).json({ error: 'Patient not found in your organization' });
         }
-        // Unassign device
+        // Unassign device from the patient table
         const { error: updateErr } = await supabase
             .from('patients')
             .update({ assigned_device_id: null })
             .eq('id', patientId);
+        console.log('PATIENT UPDATE ERROR:', updateErr);
         if (updateErr)
             return res.status(400).json({ error: updateErr.message });
+        // UPDATE ADDED HERE: Clear the patient from the device table
+        if (patient.assigned_device_id) {
+            const { error: deviceUpdateErr } = await supabase
+                .from('devices')
+                .update({ assigned_patient_id: null })
+                .eq('id', patient.assigned_device_id);
+            console.log('DEVICE UPDATE ERROR:', deviceUpdateErr);
+        }
+        // NEW: Clear the device from the realtime_patient_monitor table
+        const { error: realtimeErr } = await supabase
+            .from('realtime_patient_monitor')
+            .update({ device_id: null })
+            .eq('patient_id', patientId);
+        console.log('REALTIME MONITOR UPDATE ERROR:', realtimeErr);
+        if (realtimeErr)
+            return res.status(400).json({ error: realtimeErr.message });
         res.json({ success: true, message: 'Device unassigned successfully' });
     }
     catch (err) {

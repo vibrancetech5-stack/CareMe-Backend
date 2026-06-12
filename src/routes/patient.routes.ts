@@ -25,6 +25,53 @@ router.post('/', requireAuth, async (req, res) => {
   }
 });
 
+// POST /api/patients/discharge
+router.post('/discharge', requireAuth, async (req, res) => {
+  try {
+    const organizationId = req.user!.organization_id;
+    const dischargedBy = req.user!.id;
+    const { patientId, summary } = req.body;
+
+    if (!patientId) {
+      return res.status(400).json({ error: 'patientId is required' });
+    }
+
+    if (!summary) {
+      return res.status(400).json({ error: 'summary is required' });
+    }
+
+    const { data: patient, error: patientErr } = await supabase
+      .from('patients')
+      .select('id')
+      .eq('id', patientId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (patientErr || !patient) {
+      return res.status(403).json({ error: 'Patient not found in your organization' });
+    }
+
+    const { error } = await supabase
+      .from('patients')
+      .update({
+        status: 'Discharged',
+        discharge_date: new Date().toISOString(),
+        discharge_summary: summary,
+        discharged_by: dischargedBy,
+      })
+      .eq('id', patientId);
+
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.json({ success: true, message: 'Patient discharged successfully' });
+  } catch (err: any) {
+    console.error('[Discharge Patient] Error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // POST /api/patients/:id/assign-device
 router.post('/:id/assign-device', requireAuth, async (req, res) => {
   try {
