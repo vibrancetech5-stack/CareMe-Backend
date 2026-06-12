@@ -19,7 +19,7 @@ router.get('/patients', requireAuth, async (req, res) => {
 router.get('/patient/:id', requireAuth, async (req, res) => {
   try {
     const organizationId = req.user!.organization_id;
-    const patientId = req.params.id;
+    const patientId = String(req.params.id);
     const result = await reportService.getFullPatientReport(patientId, organizationId);
     res.json(result);
   } catch (err: any) {
@@ -32,7 +32,7 @@ router.get('/patient/:id', requireAuth, async (req, res) => {
 router.get('/patient/:id/pdf', requireAuth, async (req, res) => {
   try {
     const organizationId = req.user!.organization_id;
-    const patientId = req.params.id;
+    const patientId = String(req.params.id);
     const report = await reportService.getFullPatientReport(patientId, organizationId);
 
     res.json({
@@ -50,7 +50,7 @@ router.get('/patient/:id/pdf', requireAuth, async (req, res) => {
 router.get('/patient/:id/csv', requireAuth, async (req, res) => {
   try {
     const organizationId = req.user!.organization_id;
-    const patientId = req.params.id;
+    const patientId = String(req.params.id);
     const csv = await reportService.getPatientCsv(patientId, organizationId);
 
     res.header('Content-Type', 'text/csv');
