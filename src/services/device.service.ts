@@ -1,5 +1,17 @@
 import { supabase } from '../config/supabase.js';
 
+const FALL_CONFIRMATION_WINDOW_MS = 15_000;
+const FALL_COOLDOWN_MS = 60_000;
+
+const activePotentialFalls = new Map<
+  string,
+  {
+    timestamp: number;
+    confidence: number | null;
+  }
+>();
+const fallCooldowns = new Map<string, number>();
+
 type RegisterPayload = {
   deviceId?: string;
   device_uid?: string;
@@ -23,6 +35,22 @@ type RegisterPayload = {
   patient_id?: string;
   assigned_patient_id?: string;
 };
+
+function isValidConfidence(value: unknown): value is number {
+  return (
+    typeof value === 'number' && Number.isFinite(value) && value >= 0.0 && value <= 1.0
+  );
+}
+
+function getSeverity(confidence?: number | null): 'low' | 'medium' | 'high' {
+  if (confidence === undefined || confidence === null) {
+    return 'medium';
+  }
+
+  if (confidence >= 0.85) return 'high';
+  if (confidence >= 0.7) return 'medium';
+  return 'low';
+}
 
 type HeartbeatPayload = {
   deviceId?: string;
@@ -57,6 +85,10 @@ type VitalsPayload = {
   breathing_rate?: number;
   fallDetected?: boolean;
   fall_detected?: boolean;
+  potentialFall?: boolean;
+  potential_fall?: boolean;
+  fallConfidence?: number;
+  fall_confidence?: number;
   postureState?: string;
   posture_state?: string;
   presence_detected?: boolean;
@@ -258,7 +290,13 @@ export class DeviceService {
     const heartbeatRate = payload.heartbeatRate ?? payload.heart_rate ?? null;
     const breathingRate = payload.breathingRate ?? payload.breathing_rate ?? null;
     const fallDetected = payload.fallDetected ?? payload.fall_detected ?? false;
+    const potentialFall = payload.potentialFall ?? payload.potential_fall ?? false;
+    const fallConfidence = payload.fallConfidence ?? payload.fall_confidence;
     const postureState = payload.postureState ?? payload.posture_state ?? null;
+
+    if (fallConfidence !== undefined && !isValidConfidence(fallConfidence)) {
+      throw new Error('fall_confidence must be a number between 0.0 and 1.0');
+    }
 
     const patientId =
       payload.patientId ??
@@ -267,6 +305,74 @@ export class DeviceService {
       null;
 
     const now = new Date().toISOString();
+    const nowMs = Date.now();
+    const trimmedDeviceUid = deviceUid.trim();
+    const rawSensorPayload = {
+      ...(payload.raw ?? {}),
+      potential_fall: potentialFall,
+      fall_confidence: fallConfidence ?? null,
+    };
+    let fallResult: Record<string, unknown> | null = null;
+
+    if (potentialFall) {
+      activePotentialFalls.set(trimmedDeviceUid, {
+        timestamp: nowMs,
+        confidence: fallConfidence ?? null,
+      });
+    }
+
+    if (fallDetected) {
+      const lastFall = fallCooldowns.get(trimmedDeviceUid);
+      if (lastFall && nowMs - lastFall < FALL_COOLDOWN_MS) {
+        fallResult = { success: true, ignored: 'duplicate_fall' };
+      } else {
+        const pending = activePotentialFalls.get(trimmedDeviceUid);
+        if (!pending || nowMs - pending.timestamp > FALL_CONFIRMATION_WINDOW_MS) {
+          if (pending) {
+            activePotentialFalls.delete(trimmedDeviceUid);
+          }
+          fallResult = { success: true, ignored: 'no_pending_potential_fall' };
+        } else if (patientId) {
+          const severity = getSeverity(pending.confidence);
+          const eventTime = now;
+
+          const { error: fallEventError } = await supabase
+            .from('fall_events')
+            .insert({
+              patient_id: patientId,
+              event_time: eventTime,
+              severity,
+              notes: null,
+            });
+
+          if (fallEventError) {
+            console.error('[updateVitals] patient_fall_events insert failed:', fallEventError);
+          }
+
+          const { error: alertError } = await supabase
+            .from('alerts')
+            .insert({
+              patient_id: patientId,
+              alert_type: 'fall',
+              severity,
+              message: 'Fall detected and confirmed',
+              created_at: eventTime,
+            });
+
+          if (alertError) {
+            console.error('[updateVitals] patient_alerts insert failed:', alertError);
+          }
+
+          activePotentialFalls.delete(trimmedDeviceUid);
+          fallCooldowns.set(trimmedDeviceUid, nowMs);
+          fallResult = { success: true, confirmed_fall: true, severity };
+        } else {
+          console.warn('[updateVitals] fall_detected but no patient assigned, skipping fall event creation');
+          activePotentialFalls.delete(trimmedDeviceUid);
+          fallResult = { success: false, ignored: 'no_patient_assigned' };
+        }
+      }
+    }
 
     let vitalsRow: Record<string, unknown> | null = null;
 
@@ -286,7 +392,7 @@ export class DeviceService {
           inactivity_duration: payload.inactivity_duration ?? null,
           movement_range: payload.movement_range ?? null,
           sensor_status: payload.sensor_status ?? 'online',
-          raw_sensor_payload: payload.raw ?? {},
+          raw_sensor_payload: rawSensorPayload,
           recorded_at: now,
         })
         .select()
@@ -358,14 +464,19 @@ export class DeviceService {
       throw new Error(deviceUpdateError.message);
     }
 
-    return (
+    const response =
       vitalsRow ?? {
         device_uid: deviceUid,
         patient_id: patientId,
         stored: false,
         reason: patientId ? 'vitals insert failed' : 'No patient assigned',
-      }
-    );
+      };
+
+    if (fallResult) {
+      Object.assign(response, { fallResult });
+    }
+
+    return response;
   }
 
   async getAvailableDevices(organizationId: string) {
