@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase.js';
+import { SleepService } from './sleep.service.js';
 
 const FALL_CONFIRMATION_WINDOW_MS = 15_000;
 const FALL_COOLDOWN_MS = 60_000;
@@ -94,11 +95,15 @@ type VitalsPayload = {
   presence_detected?: boolean;
   motion_detected?: boolean;
   sleep_state?: string;
+  sleepDuration?: number;
+  sleep_duration?: number;
   movement_range?: number;
   inactivity_duration?: number;
   sensor_status?: string;
   signal_strength?: number;
   battery_level?: number;
+  nightAverageBpm?: number;
+  night_average_bpm?: number;
   raw?: Record<string, unknown>;
 };
 
@@ -111,6 +116,8 @@ type AlertPayload = {
 };
 
 export class DeviceService {
+  private readonly sleepService = new SleepService();
+
   async registerDevice(payload: RegisterPayload) {
     const deviceUid = payload.device_uid ?? payload.deviceId;
     if (!deviceUid) throw new Error('Missing device_uid');
@@ -293,9 +300,15 @@ export class DeviceService {
     const potentialFall = payload.potentialFall ?? payload.potential_fall ?? false;
     const fallConfidence = payload.fallConfidence ?? payload.fall_confidence;
     const postureState = payload.postureState ?? payload.posture_state ?? null;
+    const nightAverageBpm =
+      payload.nightAverageBpm ?? payload.night_average_bpm ?? null;
 
     if (fallConfidence !== undefined && !isValidConfidence(fallConfidence)) {
       throw new Error('fall_confidence must be a number between 0.0 and 1.0');
+    }
+
+    if (nightAverageBpm !== null && !Number.isFinite(nightAverageBpm)) {
+      throw new Error('night_average_bpm must be a finite number');
     }
 
     const patientId =
@@ -303,6 +316,25 @@ export class DeviceService {
       payload.patient_id ??
       device.assigned_patient_id ??
       null;
+
+    const { data: realtimeMonitor, error: realtimeMonitorError } = patientId
+      ? await supabase
+          .from('realtime_patient_monitor')
+          .select('sleep_state')
+          .eq('patient_id', patientId)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    if (realtimeMonitorError) {
+      console.error(
+        '[updateVitals] realtime_patient_monitor lookup failed:',
+        realtimeMonitorError,
+      );
+    }
+
+    const previousSleepState = realtimeMonitor?.sleep_state ?? null;
+    const nextSleepState = payload.sleep_state ?? null;
+    const sleepDuration = payload.sleep_duration ?? payload.sleepDuration ?? null;
 
     const now = new Date().toISOString();
     const nowMs = Date.now();
@@ -374,6 +406,22 @@ export class DeviceService {
       }
     }
 
+    if (patientId && nextSleepState) {
+      try {
+        if (
+          this.sleepService.shouldStartSleepSession(previousSleepState, nextSleepState)
+        ) {
+          await this.sleepService.startSleepSession(patientId, trimmedDeviceUid, now);
+        } else if (
+          this.sleepService.shouldEndSleepSession(previousSleepState, nextSleepState)
+        ) {
+          await this.sleepService.endSleepSession(patientId, trimmedDeviceUid, now);
+        }
+      } catch (sleepError) {
+        console.error('[updateVitals] sleep session update failed:', sleepError);
+      }
+    }
+
     let vitalsRow: Record<string, unknown> | null = null;
 
     if (patientId) {
@@ -388,7 +436,8 @@ export class DeviceService {
           motion_detected: payload.motion_detected ?? false,
           fall_detected: fallDetected,
           posture_state: postureState,
-          sleep_state: payload.sleep_state ?? null,
+          sleep_state: nextSleepState,
+          sleep_duration: sleepDuration,
           inactivity_duration: payload.inactivity_duration ?? null,
           movement_range: payload.movement_range ?? null,
           sensor_status: payload.sensor_status ?? 'online',
@@ -405,30 +454,34 @@ export class DeviceService {
         console.log('Vitals inserted');
       }
 
+      const realtimeUpsertData: Record<string, unknown> = {
+        patient_id: patientId,
+        device_id: device.id,
+        heartbeat_rate: heartbeatRate,
+        breathing_rate: breathingRate,
+        presence_detected: payload.presence_detected ?? false,
+        motion_detected: payload.motion_detected ?? false,
+        posture_state: postureState,
+        sleep_state: nextSleepState,
+        sleep_duration: sleepDuration,
+        fall_detected: fallDetected,
+        potential_fall: potentialFall,
+        fall_confidence: fallConfidence ?? null,
+        movement_range: payload.movement_range ?? null,
+        inactivity_duration: payload.inactivity_duration ?? null,
+        sensor_status: payload.sensor_status ?? 'online',
+        updated_at: now,
+      };
+
+      if (nightAverageBpm !== null) {
+        realtimeUpsertData['night_average_bpm'] = nightAverageBpm;
+      }
+
       const { error: realtimeError } = await supabase
         .from('realtime_patient_monitor')
-        .upsert(
-          {
-            patient_id: patientId,
-            device_id: device.id,
-            heartbeat_rate: heartbeatRate,
-            breathing_rate: breathingRate,
-            presence_detected: payload.presence_detected ?? false,
-            motion_detected: payload.motion_detected ?? false,
-            posture_state: postureState,
-            sleep_state: payload.sleep_state ?? null,
-            fall_detected: fallDetected,
-            potential_fall: potentialFall,
-            fall_confidence: fallConfidence ?? null,
-            movement_range: payload.movement_range ?? null,
-            inactivity_duration: payload.inactivity_duration ?? null,
-            sensor_status: payload.sensor_status ?? 'online',
-            updated_at: now,
-          },
-          {
-            onConflict: 'patient_id',
-          },
-        );
+        .upsert(realtimeUpsertData, {
+          onConflict: 'patient_id',
+        });
 
       if (realtimeError) {
         console.error(
