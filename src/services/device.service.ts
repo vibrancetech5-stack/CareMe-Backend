@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase.js';
 import { SleepService } from './sleep.service.js';
+import { RespiratoryService } from './respiratory.service.js';
 
 const FALL_CONFIRMATION_WINDOW_MS = 15_000;
 const FALL_COOLDOWN_MS = 60_000;
@@ -117,6 +118,7 @@ type AlertPayload = {
 
 export class DeviceService {
   private readonly sleepService = new SleepService();
+  private readonly respiratoryService = new RespiratoryService();
 
   async registerDevice(payload: RegisterPayload) {
     const deviceUid = payload.device_uid ?? payload.deviceId;
@@ -491,6 +493,19 @@ export class DeviceService {
       }
       else {
         console.log('Realtime monitor updated');
+      }
+
+      if (nightAverageBpm !== null) {
+        try {
+          await this.respiratoryService.recordNightAverage({
+            patientId,
+            deviceId: String(device.id),
+            nightAverageBpm,
+            recordedDate: now.slice(0, 10),
+          });
+        } catch (respiratoryError) {
+          console.error('[updateVitals] respiratory baseline update failed:', respiratoryError);
+        }
       }
     }
 
