@@ -418,6 +418,8 @@ export class DeviceService {
             posture_state: postureState,
             sleep_state: payload.sleep_state ?? null,
             fall_detected: fallDetected,
+            potential_fall: potentialFall,
+            fall_confidence: fallConfidence ?? null,
             movement_range: payload.movement_range ?? null,
             inactivity_duration: payload.inactivity_duration ?? null,
             sensor_status: payload.sensor_status ?? 'online',
