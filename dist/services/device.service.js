@@ -332,12 +332,29 @@ export class DeviceService {
             }
             if (nightAverageBpm !== null) {
                 try {
-                    await this.respiratoryService.recordNightAverage({
+                    const respiratoryRecord = await this.respiratoryService.recordNightAverage({
                         patientId,
                         deviceId: String(device.id),
                         nightAverageBpm,
                         recordedDate: now.slice(0, 10),
                     });
+                    const { error: respiratoryRealtimeError } = await supabase
+                        .from('realtime_patient_monitor')
+                        .upsert({
+                        patient_id: patientId,
+                        device_id: device.id,
+                        baseline_bpm: respiratoryRecord.baseline_bpm,
+                        night_average_bpm: respiratoryRecord.night_average_bpm,
+                        respiratory_trend_percent: respiratoryRecord.trend_percentage,
+                        respiratory_alert: respiratoryRecord.respiratory_alert ?? false,
+                        respiratory_status: respiratoryRecord.alert_level,
+                        updated_at: now,
+                    }, {
+                        onConflict: 'patient_id',
+                    });
+                    if (respiratoryRealtimeError) {
+                        console.error('[updateVitals] respiratory realtime update failed:', respiratoryRealtimeError);
+                    }
                 }
                 catch (respiratoryError) {
                     console.error('[updateVitals] respiratory baseline update failed:', respiratoryError);
