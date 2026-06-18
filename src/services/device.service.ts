@@ -497,7 +497,7 @@ export class DeviceService {
 
       if (nightAverageBpm !== null) {
         try {
-          const respiratoryRecord = await this.respiratoryService.recordNightAverage({
+          const respiratoryRecord = await this.respiratoryService.processNightAverage({
             patientId,
             deviceId: String(device.id),
             nightAverageBpm,

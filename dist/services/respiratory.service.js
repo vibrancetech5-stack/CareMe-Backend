@@ -58,30 +58,60 @@ export class RespiratoryService {
         }
         return data;
     }
-    async recordNightAverage(params) {
+    calculateBaseline(nightAverages, fallback) {
+        if (nightAverages.length === 0) {
+            return roundToOneDecimal(fallback);
+        }
+        const average = nightAverages.reduce((sum, value) => sum + value, 0) / nightAverages.length;
+        return roundToOneDecimal(average);
+    }
+    calculateTrend(current, baseline) {
+        return calculateTrendPercentage(current, baseline);
+    }
+    async createRespiratoryAlert(params) {
+        const alertMessage = `Respiratory rate increased ${params.trendPercentage}% above baseline.`;
+        const { data, error } = await supabase
+            .from('alerts')
+            .insert({
+            patient_id: params.patientId,
+            device_id: params.deviceId,
+            alert_type: 'Respiratory Trend Alert',
+            severity: params.alertLevel === 'Alert' ? 'High' : 'Medium',
+            message: alertMessage,
+            created_at: new Date().toISOString(),
+        })
+            .select('*')
+            .single();
+        if (error) {
+            throw new Error(error.message);
+        }
+        console.log('[RespiratoryService] caregiver notification trigger:', {
+            patient_id: params.patientId,
+            device_id: params.deviceId,
+            channel: ['push', 'email', 'dashboard'],
+            severity: params.alertLevel === 'Alert' ? 'High' : 'Medium',
+            message: alertMessage,
+        });
+        return data;
+    }
+    async processNightAverage(params) {
         const recordedDate = params.recordedDate ?? new Date().toISOString().slice(0, 10);
         const currentAverage = roundToOneDecimal(params.nightAverageBpm);
         const existing = await this.getRecordForDate(params.patientId, recordedDate);
         const previousAverages = await this.getLastSevenNightAverages(params.patientId, recordedDate);
-        const baselineFromHistory = previousAverages.length > 0
-            ? roundToOneDecimal(previousAverages.reduce((sum, value) => sum + value, 0) / previousAverages.length)
-            : currentAverage;
-        const trendPercentage = calculateTrendPercentage(currentAverage, baselineFromHistory);
+        const baselineBpm = this.calculateBaseline(previousAverages, currentAverage);
+        const trendPercentage = this.calculateTrend(currentAverage, baselineBpm);
         const alertLevel = trendPercentage === null ? 'Stable' : determineAlertLevel(trendPercentage);
-        let respiratoryAlert = false;
-        let shouldCreateAlert = false;
-        if (trendPercentage !== null && trendPercentage >= 25) {
-            const previousNight = await this.getPreviousNightRecord(params.patientId, recordedDate);
-            const previousQualifies = previousNight?.trend_percentage !== null &&
-                previousNight?.trend_percentage !== undefined &&
-                Number(previousNight.trend_percentage) >= 25;
-            respiratoryAlert = previousQualifies;
-            shouldCreateAlert = previousQualifies && !existing?.respiratory_alert;
-        }
+        const previousNight = await this.getPreviousNightRecord(params.patientId, recordedDate);
+        const currentQualifies = trendPercentage !== null && trendPercentage >= 25;
+        const previousQualifies = previousNight?.trend_percentage !== null &&
+            previousNight?.trend_percentage !== undefined &&
+            Number(previousNight.trend_percentage) >= 25;
+        const respiratoryAlert = currentQualifies && previousQualifies;
         const row = {
             patient_id: params.patientId,
             device_id: params.deviceId,
-            baseline_bpm: baselineFromHistory,
+            baseline_bpm: baselineBpm,
             night_average_bpm: currentAverage,
             trend_percentage: trendPercentage,
             respiratory_alert: respiratoryAlert,
@@ -120,24 +150,17 @@ export class RespiratoryService {
         if (error) {
             throw new Error(error.message);
         }
-        if (shouldCreateAlert && trendPercentage !== null) {
-            const alertMessage = `Respiratory rate increased ${trendPercentage}% above baseline.`;
-            await supabase.from('alerts').insert({
-                patient_id: params.patientId,
-                device_id: params.deviceId,
-                alert_type: 'Respiratory Trend Alert',
-                severity: alertLevel === 'Alert' ? 'High' : 'Medium',
-                message: alertMessage,
-                created_at: new Date().toISOString(),
-            });
-            console.log('[RespiratoryService] caregiver notification trigger:', {
-                patient_id: params.patientId,
-                device_id: params.deviceId,
-                channel: ['push', 'email', 'dashboard'],
-                severity: alertLevel === 'Alert' ? 'High' : 'Medium',
-                message: alertMessage,
+        if (respiratoryAlert && trendPercentage !== null && !existing?.respiratory_alert) {
+            await this.createRespiratoryAlert({
+                patientId: params.patientId,
+                deviceId: params.deviceId,
+                trendPercentage,
+                alertLevel,
             });
         }
         return data;
+    }
+    async recordNightAverage(params) {
+        return this.processNightAverage(params);
     }
 }
